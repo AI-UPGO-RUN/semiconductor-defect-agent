@@ -8,3 +8,7 @@ __pycache__/
 
 # env
 .env
+/logs/dev
+/logs
+/data
+.DS_Store
