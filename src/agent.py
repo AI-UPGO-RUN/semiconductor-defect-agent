@@ -50,7 +50,7 @@ def observe_struct(img_url: str, dbg_id: Optional[str] = None) -> Dict[str, Any]
                       f, ensure_ascii=False, indent=2)
         return out
 
-def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]] = None, dbg_id: Optional[str] = None) -> Dict[str, Any]:
+def observe(img_input: Any, mode: str = "normal", anchor_urls: Optional[List[str]] = None, dbg_id: Optional[str] = None) -> Dict[str, Any]:
     if mode == "strict":
         prompt = PROMPT_STRICT
     elif mode == "anchor_compare":
@@ -59,8 +59,12 @@ def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]]
         prompt = PROMPT_NORMAL
 
     content_blocks = [{"type": "text", "text": prompt}]
-    content_blocks.append({"type": "image_url", "image_url": {"url": img_url}})
 
+    if isinstance(img_input, list):
+        for url in img_input:
+            content_blocks.append({"type": "image_url", "image_url": {"url": url}})
+    else:
+        content_blocks.append({"type": "image_url", "image_url": {"url": img_input}})
     if anchor_urls:
         for u in anchor_urls[:2]:
             content_blocks.append({"type": "image_url", "image_url": {"url": u}})
@@ -90,7 +94,7 @@ def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]]
         dump = {
             "id": dbg_id,
             "mode": mode,
-            "img_url": img_url,  # base64가 너무 길면 생략 가능
+            # "img_url": img_input[0],  # base64가 너무 길면 생략 가능
             "anchor_urls": (anchor_urls[:2] if anchor_urls else []),
             "raw_text": raw_text[:4000],
             "parsed": parsed,
@@ -285,20 +289,22 @@ def need_review(dec: Decision, obs: Dict[str, Any]) -> bool:
 # =========================
 # Classify Agent: normal -> strict -> anchor_compare
 # =========================
-def classify_agent(img_url: str, anchor_urls: List[str], dbg_id: str, max_retries=3) -> Tuple[
+def classify_agent(img_input: Any, anchor_urls: List[str], dbg_id: str, max_retries=3) -> Tuple[
     int, Dict[str, Any], Decision]:
     for attempt in range(max_retries):
         try:
-            st = observe_struct(img_url, dbg_id=dbg_id)
+            # 구조적 관찰은 원본만
+            st = observe_struct(img_input[0], dbg_id=dbg_id)
             if DEBUG:
                 print(f"[DBG] {dbg_id} struct={st}")
 
-            obs1 = observe(img_url, mode="normal", dbg_id=dbg_id)
+            # 결함 관찰은 [원본 + 전처리]
+            obs1 = observe(img_input, mode="normal", dbg_id=dbg_id)
 
             if is_template_zero(obs1):
                 obs1b = None
             try:
-                obs1b = observe(img_url, mode="normal", dbg_id=dbg_id)
+                obs1b = observe(img_input, mode="normal", dbg_id=dbg_id)
             except Exception:
                 obs1b = None
 
@@ -310,13 +316,13 @@ def classify_agent(img_url: str, anchor_urls: List[str], dbg_id: str, max_retrie
             if not need_review(dec1, obs1):
                 return dec1.label, obs1, dec1
 
-            obs2 = observe(img_url, mode="strict", dbg_id=dbg_id)
+            obs2 = observe(img_input, mode="strict", dbg_id=dbg_id)
             dec2 = decide_with_struct(obs2, st)
 
             if dec2.label == LABEL_ABNORMAL and (dec2.why.startswith("HARD") or dec2.why.startswith("COMBO")):
                 return LABEL_ABNORMAL, obs2, dec2
 
-            obs3 = observe(img_url, mode="anchor_compare", anchor_urls=anchor_urls[:2], dbg_id=dbg_id)
+            obs3 = observe(img_input[0], mode="anchor_compare", anchor_urls=anchor_urls[:2], dbg_id=dbg_id)
             dec3 = decide_with_struct(obs3, st)
 
             candidates = [(dec1, obs1), (dec2, obs2), (dec3, obs3)]
@@ -339,6 +345,7 @@ def classify_agent(img_url: str, anchor_urls: List[str], dbg_id: str, max_retrie
 
 # =========================
 # Validator: 전체 분포 sanity check 후 재검토
+# 여기서는 url 가져오고 다른건 base64니까 검토가 필요함
 # =========================
 def validate_and_maybe_rerun(rows: List[Dict[str, Any]], anchor_urls: List[str]) -> List[Dict[str, Any]]:
     labels = [r["label"] for r in rows]

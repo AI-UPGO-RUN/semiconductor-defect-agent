@@ -80,6 +80,25 @@ def build_prompt(mode: str = "normal") -> str:
         f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n"
     )
 
+    # [핵심] 이미지 가이드 추가
+    img_guide = (
+        "\n[이미지 분석 가이드: 기능적 연결성(Connectivity) 중심]\n"
+        "너는 반도체 부품의 전기적 연결 상태를 검사한다. 모양보다 **'연결 여부'**가 가장 중요하다.\n\n"
+
+        "**1. Bent/Short 판단 기준 (Continuity Check)**\n"
+        "- **정상(Pass)**: 다리가 아무리 휘어지거나 꼬불꼬불해도, **'부품 몸통(Body)에서 시작하여 구멍(Hole) 안쪽까지 끊김 없이 붉은 선이 이어져 있다면'** 정상이다. 이를 `lead_defect=false`로 판정해라.\n"
+        "- **불량(Fail)**: \n"
+        "  (a) 다리가 구멍에 도달하지 못하고 중간에 끊긴 경우 (Short).\n"
+        "  (b) 다리가 구멍이 아닌 엉뚱한 곳(옆 구멍이나 빈 공간)으로 이어진 경우 (Misalignment).\n\n"
+
+        "**2. 개수 산정 기준 (50% Rule)**\n"
+        "- **존재함(Count)**: 다리의 윤곽선이 희미하거나 일부가 지워져 보여도, 전체 길이의 **50% 이상**이 남아있다면 1개로 세어라.\n"
+        "- **없음(Missing)**: 다리의 뿌리가 몸통에서 완전히 떨어져 나갔거나(Detached), 중간이 뚝 끊겨서 **50% 이상 소실**된 경우에만 `visible_lead_count`를 줄여라.\n\n"
+
+        "**3. 주의 사항**\n"
+        "- 배경의 구멍(Hole) 위치를 정확히 파악해라. 다리 끝이 구멍 영역(동그라미) 안에 들어가는지가 핵심이다.\n"
+    )
+
     criteria = "\n".join([f"- {k}: {desc}" for k, desc in OBS_ITEMS])
 
     if mode == "strict":
@@ -91,7 +110,7 @@ def build_prompt(mode: str = "normal") -> str:
     elif mode == "anchor_compare":
         rule = (
             "\n판단 기준:\n"
-            "- 두 번째/세 번째로 제공되는 이미지는 '정상 앵커'다.\n"
+            "- 두 번째 제공되는 이미지는 '정상 앵커'다.\n"
             "- 첫 번째 이미지(검사 대상)가 앵커와 구조적으로 다른지 비교해서 판단한다.\n"
             "- 애매하면 value=false.\n"
         )
@@ -102,7 +121,7 @@ def build_prompt(mode: str = "normal") -> str:
             "- confidence는 확신 정도(0~1).\n"
         )
 
-    return header + rule + "\n관찰 항목 설명:\n" + criteria
+    return header + img_guide + rule + "\n관찰 항목 설명:\n" + criteria
 
 
 class ImageHandler:

@@ -31,10 +31,7 @@ for idx, a_url in enumerate(anchor_urls_raw):
     # 다운로드 (메모리)
     raw_img = handler.download_image(a_url)
     if raw_img is not None:
-        # 전처리 (메모리)
-        prep_img = handler.preprocess_image(raw_img)
-        # Base64 변환 (메모리)
-        b64_str = utils.encode_image_to_base64(prep_img)
+        b64_str = utils.encode_image_to_base64(raw_img)
         if b64_str:
             anchor_b64s.append(b64_str)
 
@@ -51,7 +48,7 @@ n = len(df)
 
 for i, row in df.iterrows():
     _id = row["id"]
-    img_url = f"{GITHUB_BASE_URL}/{_id}.png"
+    img_url = row["img_url"]
 
     try:
         # [Step 1] 다운로드
@@ -63,13 +60,16 @@ for i, row in df.iterrows():
         prep_img = handler.preprocess_image(raw_img)
 
         # [Step 3] Base64 인코딩 (파일 저장 안 함)
-        img_base64 = utils.encode_image_to_base64(prep_img)
+        raw_b64 = utils.encode_image_to_base64(raw_img)  # 원본
+        prep_b64 = utils.encode_image_to_base64(prep_img)  # 전처리
+
+        input_images = [raw_b64, prep_b64]
 
         # [Step 4] Agent 호출
         # 주의: agent.classify_agent가 첫 번째 인자로 URL 대신 Base64 문자열을 받도록
         #       agent 쪽 코드도 대응이 필요합니다. (또는 LLM이 Data URI를 URL로 인식하므로 그대로 전달)
         label, obs, dec = agent.classify_agent(
-            img_base64,  # URL 대신 Base64 전달
+            input_images,  # URL 대신 Base64 전달
             anchor_urls=anchor_b64s,  # 앵커도 Base64 리스트 전달
             dbg_id=_id
         )
