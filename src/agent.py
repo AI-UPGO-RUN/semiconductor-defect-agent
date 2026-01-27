@@ -9,8 +9,6 @@ import random
 PROMPT_NORMAL = utils.build_prompt("normal")
 PROMPT_STRICT = utils.build_prompt("strict")
 PROMPT_ANCHOR = utils.build_prompt("anchor_compare")
-DEBUG = config.DEBUG
-DEBUG_DIR = config.DEV_DEBUG_DIR
 SYSTEM = config.SYSTEM
 STRUCT_PROMPT = config.STRUCT_PROMPT
 KEYS = config.KEYS
@@ -18,6 +16,17 @@ HARD_ABNORMAL_KEYS = config.HARD_ABNORMAL_KEYS
 LABEL_ABNORMAL = config.LABEL_ABNORMAL
 LABEL_NORMAL = config.LABEL_NORMAL
 WEIGHTS = config.WEIGHTS
+DEBUG_DIR = config.DEV_DEBUG_DIR
+DEBUG = config.DEV_DEBUG
+
+if DEBUG:
+    # 예: debug/20231025_143000/ 처럼 한 폴더에 다 모임
+    SESSION_TIMESTAMP = time.strftime("%y%m%d_%H%M")
+    CURRENT_DEBUG_DIR = os.path.join(DEBUG_DIR, SESSION_TIMESTAMP)
+    os.makedirs(CURRENT_DEBUG_DIR, exist_ok=True)
+    print(f"[DEBUG] Logs will be saved to: {CURRENT_DEBUG_DIR}")
+else:
+    CURRENT_DEBUG_DIR = None
 
 def observe_struct(img_url: str, dbg_id: Optional[str] = None) -> Dict[str, Any]:
     raw = utils.post_chat([
@@ -34,11 +43,12 @@ def observe_struct(img_url: str, dbg_id: Optional[str] = None) -> Dict[str, Any]
         "severe_bend": bool(parsed.get("severe_bend", False)),
         "occluded": bool(parsed.get("occluded", False)),
     }
-    if DEBUG and dbg_id:
-        with open(os.path.join(DEBUG_DIR, f"{dbg_id}_struct.json"), "w", encoding="utf-8") as f:
+    if DEBUG and dbg_id and CURRENT_DEBUG_DIR:
+        save_path = os.path.join(CURRENT_DEBUG_DIR, f"{dbg_id}_struct.json")
+        with open(save_path, "w", encoding="utf-8") as f:
             json.dump({"id": dbg_id, "raw_text": raw[:4000], "parsed": parsed, "struct": out},
                       f, ensure_ascii=False, indent=2)
-    return out
+        return out
 
 def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]] = None, dbg_id: Optional[str] = None) -> Dict[str, Any]:
     if mode == "strict":
@@ -76,17 +86,19 @@ def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]]
             out[k] = {"value": False, "confidence": 0.0, "reason": ""}
 
     # DEBUG
-    if DEBUG and dbg_id:
+    if DEBUG and dbg_id and CURRENT_DEBUG_DIR:
         dump = {
             "id": dbg_id,
             "mode": mode,
-            "img_url": img_url,
+            "img_url": img_url,  # base64가 너무 길면 생략 가능
             "anchor_urls": (anchor_urls[:2] if anchor_urls else []),
             "raw_text": raw_text[:4000],
             "parsed": parsed,
             "normalized": out,
         }
-        with open(os.path.join(DEBUG_DIR, f"{dbg_id}_{mode}.json"), "w", encoding="utf-8") as f:
+        # 모드별로 파일 저장
+        save_path = os.path.join(CURRENT_DEBUG_DIR, f"{dbg_id}_{mode}.json")
+        with open(save_path, "w", encoding="utf-8") as f:
             json.dump(dump, f, ensure_ascii=False, indent=2)
 
     return out
@@ -138,56 +150,56 @@ def _normalize_item(v) -> Dict[str, Any]:
     # default
     return {"value": False, "confidence": 0.0, "reason": ""}
 
-def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]] = None, dbg_id: Optional[str] = None) -> Dict[str, Any]:
-    if mode == "strict":
-        prompt = PROMPT_STRICT
-    elif mode == "anchor_compare":
-        prompt = PROMPT_ANCHOR
-    else:
-        prompt = PROMPT_NORMAL
-
-    content_blocks = [{"type": "text", "text": prompt}]
-    content_blocks.append({"type": "image_url", "image_url": {"url": img_url}})
-
-    if anchor_urls:
-        for u in anchor_urls[:2]:
-            content_blocks.append({"type": "image_url", "image_url": {"url": u}})
-
-    raw_text = utils.post_chat([
-        {"role": "system", "content": SYSTEM},
-        {"role": "user", "content": content_blocks},
-    ])
-
-    parsed = None
-    try:
-        parsed = utils.safe_json_extract(raw_text)
-    except Exception:
-        parsed = {"_parse_error": True}
-
-    # 정규화
-    out = {}
-    if isinstance(parsed, dict):
-        for k in KEYS:
-            out[k] = _normalize_item(parsed.get(k, None))
-    else:
-        for k in KEYS:
-            out[k] = {"value": False, "confidence": 0.0, "reason": ""}
-
-    # DEBUG
-    if DEBUG and dbg_id:
-        dump = {
-            "id": dbg_id,
-            "mode": mode,
-            "img_url": img_url,
-            "anchor_urls": (anchor_urls[:2] if anchor_urls else []),
-            "raw_text": raw_text[:4000],
-            "parsed": parsed,
-            "normalized": out,
-        }
-        with open(os.path.join(DEBUG_DIR, f"{dbg_id}_{mode}.json"), "w", encoding="utf-8") as f:
-            json.dump(dump, f, ensure_ascii=False, indent=2)
-
-    return out
+# def observe(img_url: str, mode: str = "normal", anchor_urls: Optional[List[str]] = None, dbg_id: Optional[str] = None) -> Dict[str, Any]:
+#     if mode == "strict":
+#         prompt = PROMPT_STRICT
+#     elif mode == "anchor_compare":
+#         prompt = PROMPT_ANCHOR
+#     else:
+#         prompt = PROMPT_NORMAL
+#
+#     content_blocks = [{"type": "text", "text": prompt}]
+#     content_blocks.append({"type": "image_url", "image_url": {"url": img_url}})
+#
+#     if anchor_urls:
+#         for u in anchor_urls[:2]:
+#             content_blocks.append({"type": "image_url", "image_url": {"url": u}})
+#
+#     raw_text = utils.post_chat([
+#         {"role": "system", "content": SYSTEM},
+#         {"role": "user", "content": content_blocks},
+#     ])
+#
+#     parsed = None
+#     try:
+#         parsed = utils.safe_json_extract(raw_text)
+#     except Exception:
+#         parsed = {"_parse_error": True}
+#
+#     # 정규화
+#     out = {}
+#     if isinstance(parsed, dict):
+#         for k in KEYS:
+#             out[k] = _normalize_item(parsed.get(k, None))
+#     else:
+#         for k in KEYS:
+#             out[k] = {"value": False, "confidence": 0.0, "reason": ""}
+#
+#     # DEBUG
+#     if DEBUG and dbg_id:
+#         dump = {
+#             "id": dbg_id,
+#             "mode": mode,
+#             "img_url": img_url,
+#             "anchor_urls": (anchor_urls[:2] if anchor_urls else []),
+#             "raw_text": raw_text[:4000],
+#             "parsed": parsed,
+#             "normalized": out,
+#         }
+#         with open(os.path.join(DEBUG_DIR, f"{dbg_id}_{mode}.json"), "w", encoding="utf-8") as f:
+#             json.dump(dump, f, ensure_ascii=False, indent=2)
+#
+#     return out
 
 def is_template_zero(obs: Dict[str, Any]) -> bool:
     return all((not obs[k]["value"]) and (obs[k]["confidence"] == 0.0) and (obs[k]["reason"] == "") for k in KEYS)
