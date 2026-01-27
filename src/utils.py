@@ -253,34 +253,34 @@ class ImageHandler:
         return preprocessed_img, raw_path, preprocessed_path
 
 
-if __name__ == "__main__":
-    """
-    간단 일괄 테스트용:
-      - DEV CSV 전체 row(id, img_url)를 순회
-      - ImageHandler로 다운로드/전처리 수행
-      - 원본/전처리 이미지를 모두 PNG로 저장
-    """
-    import pandas as pd
-
-    csv_path = config.DEV_INPUT_PATH
-    df = pd.read_csv(csv_path)
-    if "id" not in df.columns or "img_url" not in df.columns:
-        raise ValueError(f"columns: {df.columns.tolist()}")
-
-    handler = ImageHandler()
-
-    n = len(df)
-    print(f"[ImageHandler 테스트] 총 {n}개 이미지 처리 시작 (원본/전처리 PNG 저장)")
-
-    for i, row in df.iterrows():
-        _id = row["id"]
-        img_url = row["img_url"]
-
-        pre_img, raw_p, pre_p = handler.process_from_url(img_url, _id)
-
-        if pre_img is None:
-            print(f"[{i + 1}/{n}] {_id} - 실패 (다운로드 오류)")
-        else:
-            print(f"[{i + 1}/{n}] {_id} - OK | raw={raw_p}, prep={pre_p}")
-
-    print("✅ ImageHandler 일괄 테스트 완료")
+# if __name__ == "__main__":
+#     """
+#     간단 일괄 테스트용:
+#       - DEV CSV 전체 row(id, img_url)를 순회
+#       - ImageHandler로 다운로드/전처리 수행
+#       - 원본/전처리 이미지를 모두 PNG로 저장
+#     """
+#     import pandas as pd
+#
+#     csv_path = config.DEV_INPUT_PATH
+#     df = pd.read_csv(csv_path)
+#     if "id" not in df.columns or "img_url" not in df.columns:
+#         raise ValueError(f"columns: {df.columns.tolist()}")
+#
+#     handler = ImageHandler()
+#
+#     n = len(df)
+#     print(f"[ImageHandler 테스트] 총 {n}개 이미지 처리 시작 (원본/전처리 PNG 저장)")
+#
+#     for i, row in df.iterrows():
+#         _id = row["id"]
+#         img_url = row["img_url"]
+#
+#         pre_img, raw_p, pre_p = handler.process_from_url(img_url, _id)
+#
+#         if pre_img is None:
+#             print(f"[{i + 1}/{n}] {_id} - 실패 (다운로드 오류)")
+#         else:
+#             print(f"[{i + 1}/{n}] {_id} - OK | raw={raw_p}, prep={pre_p}")
+#
+#     print("✅ ImageHandler 일괄 테스트 완료")
