@@ -3,12 +3,11 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
-
-API_KEY = os.getenv("SALTLUX_API_KEY")
+API_KEY = os.getenv("LUXIA_API_KEY")
 
 # 모델 변경 시 변경 필요
 BRIDGE_URL = "https://bridge.luxiacloud.com/llm/openai/chat/completions/gpt-4o-mini/create"
-MODEL = "gpt-4o-mini-2024-07-18"
+MODEL = "llm"
 
 # 경로 설정
 # - BASE_DIR: 현재 디렉토리
@@ -21,6 +20,7 @@ DEV_INPUT_PATH = os.path.join(BASE_DIR, "data", "dev", "dev.csv")
 DEV_SAVE_DIR = os.path.join(BASE_DIR, "data", "dev", "images")
 DEV_OUTPUT_PATH = os.path.join(BASE_DIR, "data", "dev", "submission.csv")
 DEV_DEBUG_DIR = os.path.join(BASE_DIR, "logs", "dev")
+GITHUB_BASE_URL = "https://raw.githubusercontent.com/AI-UPGO-RUN/semiconductor-defect-agent/main/data/dev/preprocessed_images"
 
 # 헤더 정보
 HEADERS = {"apikey": API_KEY, "Content-Type": "application/json"}

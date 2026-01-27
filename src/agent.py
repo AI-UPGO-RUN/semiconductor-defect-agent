@@ -210,12 +210,12 @@ def decide(obs: Dict[str, Any]) -> Decision:
             return Decision(LABEL_ABNORMAL, 999.0, False, f"HARD:{k}")
 
     # 2) Combo abnormal
-    if utils.combo_abnormal(obs):
-        tilt_c = obs["device_tilt_or_rotation"]["confidence"]
-        m_c = obs["misalignment_severe"]["confidence"]
-        p_c = obs["package_damage"]["confidence"]
-        if tilt_c >= 0.5 and max(m_c, p_c) >= 0.5:
-            return Decision(LABEL_ABNORMAL, 50.0, False, "COMBO:tilt+(misalign|damage)")
+    # if combo_abnormal(obs):
+    #     tilt_c = obs["device_tilt_or_rotation"]["confidence"]
+    #     m_c = obs["misalignment_severe"]["confidence"]
+    #     p_c = obs["package_damage"]["confidence"]
+    #     if tilt_c >= 0.5 and max(m_c, p_c) >= 0.5:
+    #         return Decision(LABEL_ABNORMAL, 50.0, False, "COMBO:tilt+(misalign|damage)")
 
     # 3) Weighted score (value * confidence * weight)
     score = 0.0
@@ -315,7 +315,11 @@ def classify_agent(img_url: str, anchor_urls: List[str], dbg_id: str, max_retrie
             best_d, best_o = max(candidates, key=lambda x: x[0].score)
             return best_d.label, best_o, best_d
 
-        except Exception:
+        except Exception as e:
+            print(f"[ERR] classify_agent dbg_id={dbg_id} attempt={attempt}")
+            print(e)
+            import traceback
+            traceback.print_exc()
             if attempt == max_retries - 1:
                 raise
             time.sleep((0.5 * (2 ** attempt)) + random.uniform(0, 0.2))
