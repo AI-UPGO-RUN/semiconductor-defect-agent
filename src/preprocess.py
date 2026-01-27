@@ -14,20 +14,20 @@ class ImageDownloader:
     def __init__(self, csv_path, save_dir):
         self.csv_path = csv_path
         self.save_dir = save_dir
-        self._create_directory(self.save_dir)
+        # self.create_directory(self.save_dir)
 
-    def _create_directory(self, path):
+    def create_directory(self, path):
         if not os.path.exists(path):
             os.makedirs(path, exist_ok=True)
             print(f"[Info] Created directory: {path}")
 
-    def _load_csv(self):
+    def load_csv(self):
         if not os.path.exists(self.csv_path):
             print(f"[Error] CSV file not found at {self.csv_path}")
             return None
         return pd.read_csv(self.csv_path)
 
-    def _download_image(self, url):
+    def download_image(self, url):
         try:
             resp = requests.get(url, timeout=10)
             resp.raise_for_status()
@@ -36,7 +36,7 @@ class ImageDownloader:
         except Exception:
             return None
 
-    def _save_image(self, image, file_name):
+    def save_image(self, image, file_name):
         if image is None: return False
         try:
             save_path = os.path.join(self.save_dir, file_name)
@@ -123,31 +123,34 @@ class ImagePreprocessor:
         else:
             gray = image
 
-        # 노이즈 제거 (선택)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
         return cv2.Canny(blurred, self.canny_low, self.canny_high)
 
-
-class ImageVisualizer:
-    def __init__(self, image_dir, processor):
-        self.image_dir = image_dir
-        self.processor = processor
-
-    def create_overlay(self, base_img, edges, color=(255, 0, 0)):
+    def apply_canny_overlay(self, image1, image2, color=(0, 0, 255)):
         """
-        base_img 위에 edges를 color 색상으로 덮어씌움
+        [NEW] 원본(혹은 CLAHE) 이미지 위에 Canny Edge를 빨간색으로 합성하여 반환
         """
-        # 엣지 마스크를 컬러로 변환
+        if image1 is None or image2 is None: return None
+
+        # 1. Edge 추출
+        edges = self.apply_canny(image1)
+
+        # 2. Edge 마스크를 컬러로 변환
         edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
-        # 엣지 부분(흰색)에 색상 적용 (OpenCV는 BGR 순서)
-        bgr_color = (color[2], color[1], color[0])
-        edges_colored[edges > 0] = bgr_color
+        # 3. Edge 부분에 색상 적용 (기본: Red)
+        # BGR 순서이므로 (0, 0, 255)가 빨간색
+        edges_colored[edges > 0] = color
 
-        # 이미지 합치기 (base_img + edges)
-        overlay_img = cv2.addWeighted(base_img, 1.0, edges_colored, 1.0, 0)
+        # 4. 이미지 합성 (원본 100% + 엣지 100%)
+        overlay_img = cv2.addWeighted(image2, 1.0, edges_colored, 1.0, 0)
+
         return overlay_img
+
+class ImageVisualizer:
+    def __init__(self, image_dir):
+        self.image_dir = image_dir
 
     def show_samples(self, num_samples=3):
         # 이미지 검색
@@ -171,42 +174,32 @@ class ImageVisualizer:
             # ---------------------------
             # [Step 1] CLAHE 적용
             # ---------------------------
-            clahe_img = self.processor.apply_clahe(original)
+            clahe_img = ImagePreprocessor().apply_clahe(original)
 
-            # ---------------------------
-            # [Step 2] Canny 적용 (CLAHE 이미지 기준)
-            # ---------------------------
-            edges = self.processor.apply_canny(original)
 
             # ---------------------------
             # [Step 3] Overlay (CLAHE 위에 엣지 얹기)
             # ---------------------------
-            overlay = self.create_overlay(original, edges, color=(255, 0, 0))  # 빨간색
+            overlay = ImagePreprocessor().apply_canny_overlay(original, clahe_img, color=(0, 0, 255))  # 빨간색
 
             # === Plotting ===
 
             # 1. Original
-            plt.subplot(num_samples, 4, i * 4 + 1)
+            plt.subplot(num_samples, 3, i * 3 + 1)
             plt.imshow(cv2.cvtColor(original, cv2.COLOR_BGR2RGB))
             plt.title(f"1. Original\n{os.path.basename(path)}")
             plt.axis('off')
 
             # 2. CLAHE
-            plt.subplot(num_samples, 4, i * 4 + 2)
+            plt.subplot(num_samples, 3, i * 3 + 2)
             plt.imshow(cv2.cvtColor(clahe_img, cv2.COLOR_BGR2RGB))
             plt.title("2. CLAHE (Enhanced)")
             plt.axis('off')
 
-            # 3. Edges
-            plt.subplot(num_samples, 4, i * 4 + 3)
-            plt.imshow(edges, cmap='gray')
-            plt.title("3. Canny Edges")
-            plt.axis('off')
-
             # 4. Overlay (CLAHE + Edges)
-            plt.subplot(num_samples, 4, i * 4 + 4)
+            plt.subplot(num_samples, 3, i * 3 + 3)
             plt.imshow(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
-            plt.title("4. Overlay (CLAHE + Red Edge)")
+            plt.title("3. Overlay (CLAHE + Red Edge)")
             plt.axis('off')
 
         plt.tight_layout()
@@ -230,7 +223,7 @@ if __name__ == "__main__":
         )
 
         # 2. 시각화 실행
-        visualizer = ImageVisualizer(image_dir=SAVE_DIR, processor=processor)
+        visualizer = ImageVisualizer(image_dir=SAVE_DIR)
         visualizer.show_samples(num_samples=3)
     else:
         print(f"경로를 찾을 수 없습니다: {SAVE_DIR}")

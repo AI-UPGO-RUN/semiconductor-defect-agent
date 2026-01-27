@@ -25,6 +25,12 @@ DEV_DEBUG_DIR = os.path.join(BASE_DIR, "logs", "dev")
 # 헤더 정보
 HEADERS = {"apikey": API_KEY, "Content-Type": "application/json"}
 
+# 전처리 정보
+CLIP_LIMIT = 2.0
+TILE_GRID_SIZE = (8, 8)
+CANNY_LOW = 50
+CANNY_HIGH = 150
+
 # 라벨 정보
 LABEL_NORMAL = 0
 LABEL_ABNORMAL = 1
