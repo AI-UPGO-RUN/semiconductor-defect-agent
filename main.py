@@ -1,19 +1,16 @@
+import os
+
+import cv2
 import pandas as pd
 import time
 from src import config, agent
-from src.preprocess import ImageDownloader, ImagePreprocessor
 
 LABEL_NORMAL = config.LABEL_NORMAL
 DEV_INPUT_PATH = config.DEV_INPUT_PATH
 DEV_OUTPUT_PATH = config.DEV_OUTPUT_PATH
-CLIP_LIMIT = config.CLIP_LIMIT
-TILE_GRID_SIZE = config.TILE_GRID_SIZE
-CANNY_LOW = config.CANNY_LOW
-CANNY_HIGH = config.CANNY_HIGH
 
-downloader = ImageDownloader(DEV_INPUT_PATH, save_dir=None)
-processor = ImagePreprocessor(clip_limit=CLIP_LIMIT, tile_grid_size=TILE_GRID_SIZE,
-                              canny_low=CANNY_LOW, canny_high=CANNY_HIGH)
+# 사전 전처리된 PNG 이미지가 저장된 디렉토리
+PREP_DIR = os.path.join(config.BASE_DIR, "data", "dev", "preprocessed_images")
 
 df = pd.read_csv(DEV_INPUT_PATH)
 if "id" not in df.columns or "img_url" not in df.columns:
@@ -35,16 +32,20 @@ for i, row in df.iterrows():
     img_url = row["img_url"]
 
     try:
-        img_raw = downloader.download_image(img_url)
+        # 로컬에 미리 전처리된 PNG 사용 (예: data/dev/preprocessed_images/DEV_000.png)
+        img_path = os.path.join(PREP_DIR, f"{_id}.png")
 
-        if img_raw is None:
-            # 다운로드 실패 시, Agent가 URL로라도 시도하게 원본 URL 전달
-            final_input = img_url
-            print(f"Downloading failed for {_id}, using URL fallback.")
-
+        if os.path.exists(img_path):
+            preprocessed_img = cv2.imread(img_path)
         else:
-            img_clahe = ImagePreprocessor().apply_clahe(img_raw)
-            final_input = ImagePreprocessor().apply_canny_overlay(img_raw, img_clahe)
+            preprocessed_img = None
+
+        if preprocessed_img is None:
+            # 로컬 파일이 없거나 로드 실패 시, 기존처럼 URL을 직접 Agent에 전달
+            final_input = img_url
+            print(f"Local image not found or failed to load for {_id}, using URL fallback.")
+        else:
+            final_input = preprocessed_img
 
         label, obs, dec = agent.classify_agent(final_input, anchor_urls=anchor_urls, dbg_id=_id)
         results.append({
