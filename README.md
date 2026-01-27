@@ -4,8 +4,6 @@
 
 라벨이 없는 예시 이미지를 기반으로, 트랜지스터에 **결함이 존재하는지 여부(0/1)** 를 자동 판단하는 에이전트를 설계·구현하는 것을 목표로 합니다.
 
----
-
 ## 👥 팀 소개
 
 | <img alt="profile" src="https://github.com/hyojeongbae.png" width="100" height="100"> | <img alt="profile" src="https://github.com/yoooonnn.png" width="100" height="100"> | <img alt="profile" src="https://github.com/hxxnjoon.png" width="100" height="100"> |
