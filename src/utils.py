@@ -123,6 +123,73 @@ def build_prompt(mode: str = "normal") -> str:
 
     return header + img_guide + rule + "\n관찰 항목 설명:\n" + criteria
 
+def build_bottom_center_hole_mask(hole_ref_img: np.ndarray) -> np.ndarray:
+    """
+    Test_008.png 기준:
+    - 모든 hole 검출
+    - 가장 하단 row 선택
+    - x 기준 중앙 3개 hole만 mask 생성
+    """
+    gray = cv2.cvtColor(hole_ref_img, cv2.COLOR_BGR2GRAY)
+
+    # hole은 어두움
+    _, binary = cv2.threshold(gray, 80, 255, cv2.THRESH_BINARY_INV)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+    # contour = hole 후보
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    holes = []
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 50:
+            continue
+        x, y, w, h = cv2.boundingRect(cnt)
+        cx = x + w // 2
+        cy = y + h // 2
+        holes.append((cx, cy, cnt))
+
+    if not holes:
+        return np.zeros_like(gray)
+
+    # 🔽 가장 아래 row 선택
+    max_y = max(h[1] for h in holes)
+    row_thresh = 10
+    bottom_row = [h for h in holes if abs(h[1] - max_y) < row_thresh]
+
+    # 🔽 x 기준 정렬 → 중앙 3개
+    bottom_row = sorted(bottom_row, key=lambda x: x[0])
+    mid = len(bottom_row) // 2
+    selected = bottom_row[mid - 1: mid + 2]
+
+    # mask 생성
+    mask = np.zeros_like(gray)
+    for _, _, cnt in selected:
+        cv2.drawContours(mask, [cnt], -1, 255, thickness=-1)
+
+    return mask
+
+
+def overlay_holes(
+    image: np.ndarray,
+    hole_mask: np.ndarray,
+    color=(255, 0, 0),  # 파랑 (BGR)
+    alpha=0.6
+) -> np.ndarray:
+    overlay = image.copy()
+    color_layer = np.zeros_like(image)
+    color_layer[:] = color
+
+    mask_3ch = cv2.cvtColor(hole_mask, cv2.COLOR_GRAY2BGR)
+
+    return np.where(
+        mask_3ch > 0,
+        cv2.addWeighted(image, 1 - alpha, color_layer, alpha, 0),
+        image
+    )
+
 
 class ImageHandler:
     """
@@ -152,6 +219,11 @@ class ImageHandler:
         self.canny_low = canny_low
         self.canny_high = canny_high
         self.gamma = gamma
+        hole_ref = cv2.imread("data/Test_008.png")
+        if hole_ref is None:
+            raise RuntimeError("Failed to load Test_008.png for hole reference")
+
+        self.bottom_center_hole_mask = build_bottom_center_hole_mask(hole_ref)
 
         # self._create_directory(self.raw_save_dir)
         # self._create_directory(self.preprocessed_save_dir)
@@ -235,29 +307,52 @@ class ImageHandler:
         return overlay_img
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        순서:
-        1. Denoise (노이즈 제거)
-        2. Gamma Correction (밝기 보정)
-        3. Sharpen (선명화 - 스크래치 강조)
-        4. CLAHE (대비 극대화)
-        5. Canny Overlay (윤곽선 붉은색 표시)
-        """
-        # 1. 노이즈 제거
         denoised = self._apply_denoise(image)
-
-        # 2. 감마 보정
         gamma_img = self._apply_gamma(denoised)
-
-        # 3. 선명화 (Sharpness)
         sharpened = self._apply_sharpen(gamma_img)
-
-        # 4. CLAHE (Local Contrast)
         clahe_img = self._apply_clahe(sharpened)
 
-        # 5. Canny Overlay
-        # 에지 추출은 노이즈가 적은 'denoised'나 'gamma_img' 기반으로 하는 게 깔끔할 수 있음
-        # 배경은 보기가 가장 좋은 'clahe_img'를 사용
-        final_img = self._apply_canny_overlay(base_image=sharpened, overlay_target=clahe_img, color=(0, 0, 255))
+        # 🔵 하단 중앙 3개 hole만 강조
+        hole_overlayed = overlay_holes(
+            clahe_img,
+            self.bottom_center_hole_mask,
+            color=(255, 0, 0),
+            alpha=0.6
+        )
+
+        # 🔴 리드 윤곽 강조
+        final_img = self._apply_canny_overlay(
+            base_image=sharpened,
+            overlay_target=hole_overlayed,
+            color=(0, 0, 255)
+        )
 
         return final_img
+
+if __name__ == "__main__":
+    import cv2
+    from src.utils import ImageHandler
+
+    # ImageHandler 초기화 (이미 수정된 utils.py 기준)
+    handler = ImageHandler()
+
+    # 테스트할 이미지 경로 or URL
+    img_path = "../data/TEST_007.png"   # ← 아무 DEV 이미지 하나
+    # img_url = "https://..."           # URL 테스트 시
+
+    # --- 로드 ---
+    raw_img = cv2.imread(img_path)
+    # raw_img = handler.download_image(img_url)
+
+    if raw_img is None:
+        raise RuntimeError("이미지 로드 실패")
+
+    # --- 전처리 ---
+    prep_img = handler.preprocess_image(raw_img)
+
+    # --- 시각화 ---
+    cv2.imshow("RAW", raw_img)
+    cv2.imshow("PREPROCESSED (Bottom-Center Holes Highlighted)", prep_img)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
