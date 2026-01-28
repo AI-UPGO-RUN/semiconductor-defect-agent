@@ -74,54 +74,140 @@ def build_prompt(mode: str = "normal") -> str:
         for k, _ in OBS_ITEMS
     }
     header = (
-        "아래 항목을 이미지에서 관찰해 JSON만 출력해.\n"
-        "각 항목은 value(true/false), confidence(0~1), reason(짧게)로 채워.\n"
-        "형식은 반드시 아래 스키마와 동일해야 한다.\n"
+        "Observe the image and output ONLY JSON.\n"
+        "For each item, fill in value (true/false), confidence (0–1), and reason (brief).\n"
+        "The output format MUST exactly match the schema below.\n"
         f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n"
     )
 
-    # [핵심] 이미지 가이드 추가
+    # [Core] Image Analysis Guide
     img_guide = (
-        "\n[이미지 분석 가이드: 기능적 연결성(Connectivity) 중심]\n"
-        "너는 반도체 부품의 전기적 연결 상태를 검사한다. 모양보다 **'연결 여부'**가 가장 중요하다.\n\n"
+        "\n[Image Analysis Guide: Connectivity-Focused Inspection]\n"
+        "You are inspecting the electrical connectivity of a semiconductor device.\n"
+        "Visual shape is secondary — **connectivity is the top priority**.\n\n"
+        "- Ignore the orientation, rotation, or tilt of the transistor body.\n"
+        "Evaluate defects ONLY based on whether each lead clearly enters a blue highlighted hole."
 
-        "**1. Bent/Short 판단 기준 (Continuity Check)**\n"
-        "- **정상(Pass)**: 다리가 아무리 휘어지거나 꼬불꼬불해도, **'부품 몸통(Body)에서 시작하여 구멍(Hole) 안쪽까지 끊김 없이 붉은 선이 이어져 있다면'** 정상이다. 이를 `lead_defect=false`로 판정해라.\n"
-        "- **불량(Fail)**: \n"
-        "  (a) 다리가 구멍에 도달하지 못하고 중간에 끊긴 경우 (Short).\n"
-        "  (b) 다리가 구멍이 아닌 엉뚱한 곳(옆 구멍이나 빈 공간)으로 이어진 경우 (Misalignment).\n\n"
 
-        "**2. 개수 산정 기준 (50% Rule)**\n"
-        "- **존재함(Count)**: 다리의 윤곽선이 희미하거나 일부가 지워져 보여도, 전체 길이의 **50% 이상**이 남아있다면 1개로 세어라.\n"
-        "- **없음(Missing)**: 다리의 뿌리가 몸통에서 완전히 떨어져 나갔거나(Detached), 중간이 뚝 끊겨서 **50% 이상 소실**된 경우에만 `visible_lead_count`를 줄여라.\n\n"
+        "**1. Bent / Short Judgment (Continuity Check)**\n"
+        "- **Normal (Pass)**: Even if a lead is bent, curved, or irregular,\n"
+        "  it is considered normal **if a continuous red trace is visible from the device body\n"
+        "  into the inside of a highlighted hole without interruption**.\n"
+        "  In this case, classify `lead_defect=false`.\n"
+        "- **Defective (Fail)**:\n"
+        "  (a) The lead does not reach a highlighted hole and is interrupted midway (Short).\n"
+        "  (b) The lead connects to an incorrect location (side hole, empty space, or outside the target region) (Misalignment).\n\n"
 
-        "**3. 주의 사항**\n"
-        "- 배경의 구멍(Hole) 위치를 정확히 파악해라. 다리 끝이 구멍 영역(동그라미) 안에 들어가는지가 핵심이다.\n"
+        "**2. Lead Counting Rule (50% Rule)**\n"
+        "- **Count as present**: Even if the outline is faint or partially missing,\n"
+        "  count the lead if **50% or more of its total length is visible**.\n"
+        "- **Count as missing**: Reduce `visible_lead_count` ONLY if\n"
+        "  the lead is completely detached from the body or **more than 50% is missing**.\n\n"
+
+        "**3. Critical Notes**\n"
+        "- Accurately identify the background holes.\n"
+        "- The key question is whether the **tip of each lead clearly enters the highlighted circular hole region**.\n"
+        "- A lead is considered connected ONLY if its endpoint is clearly inside the blue highlighted circular hole.\n"
+        "Touching the edge or stopping just outside the circle is NOT sufficient."
+        "- Ignore the rotation or orientation of the transistor package body."
+        "- Focus on the DIRECTION of each lead:"
+        "each lead must extend downward toward the bottom (6 o'clock direction)\n"
+        "and clearly enter a blue highlighted hole.\n"
+        "- If a lead points sideways or upward and cannot reach a hole,it must be considered defective."
     )
 
     criteria = "\n".join([f"- {k}: {desc}" for k, desc in OBS_ITEMS])
 
     if mode == "strict":
         rule = (
-            "\n판단 기준:\n"
-            "- 매우 보수적으로 판단한다. 애매하면 value=false.\n"
-            "- confidence는 확신 정도(0~1). 확신 없으면 0.3 이하로 둔다.\n"
+            "\nJudgment Rules:\n"
+            "- Judge very conservatively. If uncertain, set value=false.\n"
+            "- confidence represents certainty (0–1). If unsure, keep it ≤ 0.3.\n"
         )
     elif mode == "anchor_compare":
         rule = (
-            "\n판단 기준:\n"
-            "- 두 번째 제공되는 이미지는 '정상 앵커'다.\n"
-            "- 첫 번째 이미지(검사 대상)가 앵커와 구조적으로 다른지 비교해서 판단한다.\n"
-            "- 애매하면 value=false.\n"
+            "\nJudgment Rules:\n"
+            "- The second provided image is a NORMAL anchor reference.\n"
+            "- Compare the first image (inspection target) against the anchor for structural differences.\n"
+            "- If uncertain, set value=false.\n"
         )
     else:
         rule = (
-            "\n판단 기준:\n"
-            "- 아주 명확할 때만 value=true. 애매하면 false.\n"
-            "- confidence는 확신 정도(0~1).\n"
+            "\nJudgment Rules:\n"
+            "- Set value=true ONLY when the condition is very clear.\n"
+            "- If ambiguous, set value=false.\n"
+            "- confidence represents certainty (0–1).\n"
         )
 
-    return header + img_guide + rule + "\n관찰 항목 설명:\n" + criteria
+    return header + img_guide + rule + "\nObservation Item Descriptions:\n" + criteria
+
+
+def build_bottom_center_hole_mask(hole_ref_img: np.ndarray) -> np.ndarray:
+    """
+    Test_008.png 기준:
+    - 모든 hole 검출
+    - 가장 하단 row 선택
+    - x 기준 중앙 3개 hole만 mask 생성
+    """
+    gray = cv2.cvtColor(hole_ref_img, cv2.COLOR_BGR2GRAY)
+
+    # hole은 어두움
+    _, binary = cv2.threshold(gray, 80, 255, cv2.THRESH_BINARY_INV)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+    # contour = hole 후보
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    holes = []
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 50:
+            continue
+        x, y, w, h = cv2.boundingRect(cnt)
+        cx = x + w // 2
+        cy = y + h // 2
+        holes.append((cx, cy, cnt))
+
+    if not holes:
+        return np.zeros_like(gray)
+
+    # 🔽 가장 아래 row 선택
+    max_y = max(h[1] for h in holes)
+    row_thresh = 10
+    bottom_row = [h for h in holes if abs(h[1] - max_y) < row_thresh]
+
+    # 🔽 x 기준 정렬 → 중앙 3개
+    bottom_row = sorted(bottom_row, key=lambda x: x[0])
+    mid = len(bottom_row) // 2
+    selected = bottom_row[mid - 1: mid + 2]
+
+    # mask 생성
+    mask = np.zeros_like(gray)
+    for _, _, cnt in selected:
+        cv2.drawContours(mask, [cnt], -1, 255, thickness=-1)
+
+    return mask
+
+
+def overlay_holes(
+    image: np.ndarray,
+    hole_mask: np.ndarray,
+    color=(255, 0, 0),  # 파랑 (BGR)
+    alpha=0.6
+) -> np.ndarray:
+    overlay = image.copy()
+    color_layer = np.zeros_like(image)
+    color_layer[:] = color
+
+    mask_3ch = cv2.cvtColor(hole_mask, cv2.COLOR_GRAY2BGR)
+
+    return np.where(
+        mask_3ch > 0,
+        cv2.addWeighted(image, 1 - alpha, color_layer, alpha, 0),
+        image
+    )
 
 
 class ImageHandler:
@@ -152,6 +238,11 @@ class ImageHandler:
         self.canny_low = canny_low
         self.canny_high = canny_high
         self.gamma = gamma
+        hole_ref = cv2.imread("data/Test_008.png")
+        if hole_ref is None:
+            raise RuntimeError("Failed to load Test_008.png for hole reference")
+
+        self.bottom_center_hole_mask = build_bottom_center_hole_mask(hole_ref)
 
         # self._create_directory(self.raw_save_dir)
         # self._create_directory(self.preprocessed_save_dir)
@@ -235,29 +326,52 @@ class ImageHandler:
         return overlay_img
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        순서:
-        1. Denoise (노이즈 제거)
-        2. Gamma Correction (밝기 보정)
-        3. Sharpen (선명화 - 스크래치 강조)
-        4. CLAHE (대비 극대화)
-        5. Canny Overlay (윤곽선 붉은색 표시)
-        """
-        # 1. 노이즈 제거
         denoised = self._apply_denoise(image)
-
-        # 2. 감마 보정
         gamma_img = self._apply_gamma(denoised)
-
-        # 3. 선명화 (Sharpness)
         sharpened = self._apply_sharpen(gamma_img)
-
-        # 4. CLAHE (Local Contrast)
         clahe_img = self._apply_clahe(sharpened)
 
-        # 5. Canny Overlay
-        # 에지 추출은 노이즈가 적은 'denoised'나 'gamma_img' 기반으로 하는 게 깔끔할 수 있음
-        # 배경은 보기가 가장 좋은 'clahe_img'를 사용
-        final_img = self._apply_canny_overlay(base_image=sharpened, overlay_target=clahe_img, color=(0, 0, 255))
+        # 🔵 하단 중앙 3개 hole만 강조
+        hole_overlayed = overlay_holes(
+            clahe_img,
+            self.bottom_center_hole_mask,
+            color=(255, 0, 0),
+            alpha=0.6
+        )
+
+        # 🔴 리드 윤곽 강조
+        final_img = self._apply_canny_overlay(
+            base_image=sharpened,
+            overlay_target=hole_overlayed,
+            color=(0, 0, 255)
+        )
 
         return final_img
+
+if __name__ == "__main__":
+    import cv2
+    from src.utils import ImageHandler
+
+    # ImageHandler 초기화 (이미 수정된 utils.py 기준)
+    handler = ImageHandler()
+
+    # 테스트할 이미지 경로 or URL
+    img_path = "../data/TEST_007.png"   # ← 아무 DEV 이미지 하나
+    # img_url = "https://..."           # URL 테스트 시
+
+    # --- 로드 ---
+    raw_img = cv2.imread(img_path)
+    # raw_img = handler.download_image(img_url)
+
+    if raw_img is None:
+        raise RuntimeError("이미지 로드 실패")
+
+    # --- 전처리 ---
+    prep_img = handler.preprocess_image(raw_img)
+
+    # --- 시각화 ---
+    cv2.imshow("RAW", raw_img)
+    cv2.imshow("PREPROCESSED (Bottom-Center Holes Highlighted)", prep_img)
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
