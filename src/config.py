@@ -119,7 +119,13 @@ SYSTEM = (
     "When judging abnormality, identify the reason clearly and precisely.\n"
     "Output ONLY the requested JSON. Do NOT output any other text.\n"
     "The device is a transistor consisting of one black package and "
-    "three silver leads."
+    "three silver leads.\n"
+    "The image may contain NO transistor device at all.\n"
+    "If no transistor body and no valid leads are visible,"
+    "the device must be classified as abnormal."
+    "Each lead must extend downward toward the bottom-center holes"
+    "(i.e., approximately the 6 o'clock direction)."
+    "The orientation of the package body itself is irrelevant."
 )
 
 # =====================================================
